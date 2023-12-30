@@ -17,8 +17,8 @@ const (
 	continuanceFormatter = "continue-%s-%s"
 )
 
-// QueueDrainWorkflow creates a new version in a task queue and
-// migrates all running workflows over after waiting for ContinueAsNew
+// QueueDrainWorkflow creates a new version in a task queue and migrates all
+// running workflows of a given type over after waiting for ContinueAsNew
 func QueueDrainWorkflow(ctx workflow.Context, in VersionDrainIn) (VersionDrainResults, error) {
 	if err := in.Validate(); err != nil {
 		return VersionDrainResults{}, err

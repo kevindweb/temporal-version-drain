@@ -38,6 +38,7 @@ func TestBasicDrain(t *testing.T) {
 		name              string
 		in                drain.VersionDrainIn
 		executions        drain.CurrentExecutionOut
+		upgradeErr        error
 		continuanceStatus drain.ContinuanceStatus
 		wantErr           bool
 		want              drain.VersionDrainResults
@@ -73,6 +74,13 @@ func TestBasicDrain(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:       "compatibility upgrade error",
+			in:         defaultValidInput,
+			upgradeErr: errors.New("example err"),
+			wantErr:    true,
+		},
+
 		{
 			name: "multiple workflows same ID error",
 			in:   defaultValidInput,
@@ -151,7 +159,7 @@ func TestBasicDrain(t *testing.T) {
 			env.SetWorkflowRunTimeout(1 * time.Hour)
 			var c drain.Client
 			env.OnActivity(c.UpgradeBuildCompatibility, anything, anything).
-				Return(nil)
+				Return(tt.upgradeErr)
 			env.OnActivity(c.CurrentExecutions, anything, anything).
 				Return(tt.executions, nil)
 			env.OnWorkflow(drain.ContinuanceWorkflow, anything, anything).

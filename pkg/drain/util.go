@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	activityTimeout = time.Second * 10
+	activityTimeout      = time.Second * 10
+	nilStatusResponseMsg = "nil describe status response"
 )
 
 var (
@@ -26,6 +27,8 @@ var (
 	ErrEmptyNamespace = errors.New("temporal namespace is empty")
 	// ErrNilClient validates the temporal client is not nil before Register
 	ErrNilClient = errors.New("temporal client is uninitialized")
+	// ErrNilStatusResponse catches the unlikely empty res from DescribeWorkflowExecution
+	ErrNilStatusResponse = errors.New(nilStatusResponseMsg)
 )
 
 // Client holds temporal client for processing versioning activities
@@ -38,6 +41,17 @@ type Client struct {
 type Config struct {
 	Temporal  temporalclient.Client
 	Namespace string
+}
+
+func (c Config) validate() error {
+	if c.Temporal == nil {
+		return ErrNilClient
+	}
+
+	if c.Namespace == "" {
+		return ErrEmptyNamespace
+	}
+	return nil
 }
 
 // VersionDrainIn holds the input required to run QueueDrainWorkflow
@@ -121,12 +135,8 @@ func activityOptions() workflow.ActivityOptions {
 // Register should be called when initializing the
 // worker that will process verion drain workflows
 func Register(w worker.Worker, config Config) error {
-	if config.Temporal == nil {
-		return ErrNilClient
-	}
-
-	if config.Namespace == "" {
-		return ErrEmptyNamespace
+	if err := config.validate(); err != nil {
+		return err
 	}
 
 	c := Client{

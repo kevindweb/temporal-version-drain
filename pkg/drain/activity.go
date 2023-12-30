@@ -4,7 +4,6 @@ package drain
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -32,15 +31,6 @@ const (
 	terminateReason           = "workflow failed to ContinueAsNew"
 	workflowCompleted         = "workflow execution already completed"
 	versionExistsErrFormatter = "version %s already exists"
-)
-
-const (
-	nilStatusResponseMsg = "nil describe status response"
-)
-
-var (
-	// ErrNilStatusResponse catches the unlikely empty res from DescribeWorkflowExecution
-	ErrNilStatusResponse = errors.New(nilStatusResponseMsg)
 )
 
 // CurrentExecutions creates a query to find running workflows

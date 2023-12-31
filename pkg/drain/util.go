@@ -139,6 +139,9 @@ func Register(w worker.Worker, config Config) error {
 		return err
 	}
 
+	w.RegisterWorkflow(QueueDrainWorkflow)
+	w.RegisterWorkflow(ContinuanceWorkflow)
+
 	c := Client{
 		temporal:  config.Temporal,
 		namespace: config.Namespace,

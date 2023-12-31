@@ -18,11 +18,11 @@ func activityOptions() workflow.ActivityOptions {
 }
 
 type wfState struct {
-	checkpoint int
+	Checkpoint int
 }
 
 // ExampleContinueWorkflow does work with a selector
-// while waiting for a ContinueAsNwSignal
+// while waiting for a ContinueAsNewSignal
 func ExampleContinueWorkflow(ctx workflow.Context, state wfState) error {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions())
 	var cas error
@@ -46,7 +46,7 @@ func ExampleContinueWorkflow(ctx workflow.Context, state wfState) error {
 			return nil
 		}
 
-		state.checkpoint += 1
+		state.Checkpoint += 1
 		log.Debug("no error yet")
 	}
 }

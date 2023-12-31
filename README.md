@@ -7,8 +7,7 @@ Version Drain is a workflow for dynamically migrating long-running Temporal work
 Please read [Temporal worker versioning docs](https://docs.temporal.io/dev-guide/go/versioning#worker-versioning) if you are not already familiar.
 
 ### Context
-Our team treats developer efficiency and deployment risk as the top priority. To enable quick iteration in Temporal with our month-long workflows, all other solutions were either too risky (`if/else` patching is not comprehensive)
-Other solutions we tried had too many failure modes
+Our team treats developer efficiency and deployment risk as the top priority. To enable quick iteration in Temporal with our month-long workflows, we tried other solutions which had too many failure modes
 * [Patching](https://docs.temporal.io/workflows#patching) with`if/else` is not comprehensive and developers make mistakes
 * Using `replayer.ReplayWorkflowHistoryFromJSONFile` in CI is great but has race conditions if a new workflow comes after CI passes but before your new code executes
 * Versioning entire workflows leaves toilsome cleanup, especially with our rate of CD iteration (10 commits per day)

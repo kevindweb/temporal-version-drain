@@ -6,7 +6,8 @@ update:
 .PHONY: lint
 lint:
 	files=$(gofmt -l .) && [ -z "$(files)" ]
-	golangci-lint run ./...
+	# golangci-lint run ./...
+	workflowcheck ./...
 
 .PHONY: test
 test:

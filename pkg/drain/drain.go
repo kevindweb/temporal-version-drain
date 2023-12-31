@@ -25,7 +25,6 @@ func QueueDrainWorkflow(ctx workflow.Context, in VersionDrainIn) (VersionDrainRe
 	}
 
 	ctx = workflow.WithActivityOptions(ctx, activityOptions())
-
 	if err := upgrade(ctx, in); err != nil {
 		return VersionDrainResults{}, err
 	}

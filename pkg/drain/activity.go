@@ -51,6 +51,12 @@ func (c Client) CurrentExecutions(
 		return CurrentExecutionOut{}, err
 	}
 
+	return getNonEmptyExecutions(list)
+}
+
+func getNonEmptyExecutions(
+	list *workflowservice.ListWorkflowExecutionsResponse,
+) (CurrentExecutionOut, error) {
 	executions := []workflow.Execution{}
 	for _, execution := range list.Executions {
 		if execution != nil && execution.Execution != nil {
@@ -80,18 +86,25 @@ func (c Client) getWorkflowQuery(
 		return "", err
 	}
 
-	buildIDs := []string{}
+	return workflowQueryFromBuildIDs(resp, version, queue, wfType)
+}
+
+func workflowQueryFromBuildIDs(
+	resp *workflowservice.GetWorkerBuildIdCompatibilityResponse,
+	version, queue, wfType string,
+) (string, error) {
+	oldBuildIDs := []string{}
 	for _, set := range resp.GetMajorVersionSets() {
 		for _, buildID := range set.GetBuildIds() {
 			if buildID != version {
-				buildIDs = append(buildIDs, fmt.Sprintf(versionedFilter, buildID))
+				oldBuildIDs = append(oldBuildIDs, fmt.Sprintf(versionedFilter, buildID))
 			}
 		}
 	}
 
 	query := fmt.Sprintf(versionQuery, queue, wfType)
-	if len(buildIDs) != 0 {
-		query += fmt.Sprintf(buildIDFilter, strings.Join(buildIDs, ", "))
+	if len(oldBuildIDs) != 0 {
+		query += fmt.Sprintf(buildIDFilter, strings.Join(oldBuildIDs, ", "))
 	}
 	return query, nil
 }
@@ -122,7 +135,14 @@ func (c Client) UpgradeBuildCompatibility(ctx context.Context, in UpgradeIn) err
 
 // GetStatus finds the status code of a workflow
 func (c Client) GetStatus(ctx context.Context, execution workflow.Execution) (StatusOut, error) {
-	resp, err := c.temporal.DescribeWorkflowExecution(ctx, execution.ID, execution.RunID)
+	return handleDescribeExecutionStatus(
+		c.temporal.DescribeWorkflowExecution(ctx, execution.ID, execution.RunID),
+	)
+}
+
+func handleDescribeExecutionStatus(
+	resp *workflowservice.DescribeWorkflowExecutionResponse, err error,
+) (StatusOut, error) {
 	if err != nil {
 		return StatusOut{}, err
 	}
@@ -148,7 +168,12 @@ func (c Client) ContinueAsNew(ctx context.Context, execution workflow.Execution)
 // TerminateWorkflow uses wfID and runID to terminate a running workflow
 // and catches an error if the workflow previously completed
 func (c Client) TerminateWorkflow(ctx context.Context, execution workflow.Execution) error {
-	err := c.temporal.TerminateWorkflow(ctx, execution.ID, execution.RunID, terminateReason)
+	return handleTerminationError(
+		c.temporal.TerminateWorkflow(ctx, execution.ID, execution.RunID, terminateReason),
+	)
+}
+
+func handleTerminationError(err error) error {
 	if err == nil || err.Error() == workflowCompleted {
 		return nil
 	}

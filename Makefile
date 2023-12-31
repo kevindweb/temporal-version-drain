@@ -3,11 +3,28 @@ update:
 	go get -u ./...
 	go mod tidy
 
+.PHONY: install
+install:
+	go install go.temporal.io/sdk/contrib/tools/workflowcheck@latest
+	npm install -g prettier
+
 .PHONY: lint
-lint:
+lint: install check
 	files=$(gofmt -l .) && [ -z "$(files)" ]
-	# golangci-lint run ./...
+	golangci-lint run ./...
+
+.PHONY: check
+check: install
 	workflowcheck ./...
+	prettier -l .
+
+.PHONY: format
+format:
+	prettier -w .
+
+.PHONY: build
+build:
+	go build ./...
 
 .PHONY: test
 test:

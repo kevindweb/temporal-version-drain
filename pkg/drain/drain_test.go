@@ -1,4 +1,4 @@
-package drain_test
+package drain
 
 import (
 	"context"
@@ -9,10 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kevindweb/version-drain/pkg/drain"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
@@ -25,7 +24,7 @@ const (
 )
 
 var (
-	defaultValidInput = drain.VersionDrainIn{
+	defaultValidInput = VersionDrainIn{
 		Queue:        "test-queue",
 		Version:      "1.4",
 		WorkflowType: "BillingWorkflow",
@@ -35,41 +34,42 @@ var (
 func TestBasicDrain(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
-		name              string
-		in                drain.VersionDrainIn
-		executions        drain.CurrentExecutionOut
-		upgradeErr        error
-		continuanceStatus drain.ContinuanceStatus
-		wantErr           bool
-		want              drain.VersionDrainResults
+		name                string
+		in                  VersionDrainIn
+		executions          CurrentExecutionOut
+		upgradeErr          error
+		currentExecutionErr error
+		continuanceStatus   ContinuanceStatus
+		wantErr             bool
+		want                VersionDrainResults
 	}{
 		{
 			name:    "invalid input",
-			in:      drain.VersionDrainIn{},
+			in:      VersionDrainIn{},
 			wantErr: true,
 		},
 		{
 			name: "no executions found",
 			in:   defaultValidInput,
-			want: drain.VersionDrainResults{
-				Workflows: []drain.ContinuanceStatus{},
+			want: VersionDrainResults{
+				Workflows: []ContinuanceStatus{},
 			},
 		},
 		{
 			name: "one continued workflow",
 			in:   defaultValidInput,
-			executions: drain.CurrentExecutionOut{
+			executions: CurrentExecutionOut{
 				Executions: []workflow.Execution{{}},
 			},
-			continuanceStatus: drain.ContinuanceStatus{
+			continuanceStatus: ContinuanceStatus{
 				Execution: workflow.Execution{},
-				Status:    enumspb.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
+				Status:    enums.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
 			},
-			want: drain.VersionDrainResults{
-				Workflows: []drain.ContinuanceStatus{
+			want: VersionDrainResults{
+				Workflows: []ContinuanceStatus{
 					{
 						Execution: workflow.Execution{},
-						Status:    enumspb.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
+						Status:    enums.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
 					},
 				},
 			},
@@ -80,11 +80,16 @@ func TestBasicDrain(t *testing.T) {
 			upgradeErr: errors.New("example err"),
 			wantErr:    true,
 		},
-
+		{
+			name:                "current execution error",
+			in:                  defaultValidInput,
+			currentExecutionErr: errors.New("example err"),
+			wantErr:             true,
+		},
 		{
 			name: "multiple workflows same ID error",
 			in:   defaultValidInput,
-			executions: drain.CurrentExecutionOut{
+			executions: CurrentExecutionOut{
 				Executions: []workflow.Execution{
 					{
 						ID:    "id1",
@@ -96,15 +101,15 @@ func TestBasicDrain(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			continuanceStatus: drain.ContinuanceStatus{
+			continuanceStatus: ContinuanceStatus{
 				Execution: workflow.Execution{},
-				Status:    enumspb.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
+				Status:    enums.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
 			},
 		},
 		{
 			name: "multiple failed workflows",
 			in:   defaultValidInput,
-			executions: drain.CurrentExecutionOut{
+			executions: CurrentExecutionOut{
 				Executions: []workflow.Execution{
 					{
 						ID:    "id1",
@@ -121,27 +126,27 @@ func TestBasicDrain(t *testing.T) {
 					},
 				},
 			},
-			continuanceStatus: drain.ContinuanceStatus{
+			continuanceStatus: ContinuanceStatus{
 				Execution: workflow.Execution{},
-				Status:    enumspb.WORKFLOW_EXECUTION_STATUS_FAILED,
+				Status:    enums.WORKFLOW_EXECUTION_STATUS_FAILED,
 			},
-			want: drain.VersionDrainResults{
-				Workflows: []drain.ContinuanceStatus{
+			want: VersionDrainResults{
+				Workflows: []ContinuanceStatus{
 					{
 						Execution: workflow.Execution{},
-						Status:    enumspb.WORKFLOW_EXECUTION_STATUS_FAILED,
+						Status:    enums.WORKFLOW_EXECUTION_STATUS_FAILED,
 					},
 					{
 						Execution: workflow.Execution{},
-						Status:    enumspb.WORKFLOW_EXECUTION_STATUS_FAILED,
+						Status:    enums.WORKFLOW_EXECUTION_STATUS_FAILED,
 					},
 					{
 						Execution: workflow.Execution{},
-						Status:    enumspb.WORKFLOW_EXECUTION_STATUS_FAILED,
+						Status:    enums.WORKFLOW_EXECUTION_STATUS_FAILED,
 					},
 					{
 						Execution: workflow.Execution{},
-						Status:    enumspb.WORKFLOW_EXECUTION_STATUS_FAILED,
+						Status:    enums.WORKFLOW_EXECUTION_STATUS_FAILED,
 					},
 				},
 			},
@@ -157,15 +162,15 @@ func TestBasicDrain(t *testing.T) {
 			)
 
 			env.SetWorkflowRunTimeout(1 * time.Hour)
-			var c drain.Client
+			var c Client
 			env.OnActivity(c.UpgradeBuildCompatibility, anything, anything).
 				Return(tt.upgradeErr)
 			env.OnActivity(c.CurrentExecutions, anything, anything).
-				Return(tt.executions, nil)
-			env.OnWorkflow(drain.ContinuanceWorkflow, anything, anything).
+				Return(tt.executions, tt.currentExecutionErr)
+			env.OnWorkflow(ContinuanceWorkflow, anything, anything).
 				Return(tt.continuanceStatus, nil)
 
-			env.ExecuteWorkflow(drain.QueueDrainWorkflow, tt.in)
+			env.ExecuteWorkflow(QueueDrainWorkflow, tt.in)
 			require.True(t, env.IsWorkflowCompleted())
 			err = env.GetWorkflowError()
 
@@ -181,7 +186,7 @@ func TestBasicDrain(t *testing.T) {
 				return
 			}
 
-			var result drain.VersionDrainResults
+			var result VersionDrainResults
 			require.NoError(t, env.GetWorkflowResult(&result))
 			require.Equal(t, tt.want, result)
 		})
@@ -192,12 +197,12 @@ func TestDrainInput(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
 		name    string
-		in      drain.VersionDrainIn
+		in      VersionDrainIn
 		wantErr bool
 	}{
 		{
 			name: "empty workflow type",
-			in: drain.VersionDrainIn{
+			in: VersionDrainIn{
 				Queue:        "test-queue",
 				Version:      "1.4",
 				WorkflowType: "",
@@ -206,7 +211,7 @@ func TestDrainInput(t *testing.T) {
 		},
 		{
 			name: "empty queue",
-			in: drain.VersionDrainIn{
+			in: VersionDrainIn{
 				Queue:        "",
 				Version:      "1.4",
 				WorkflowType: "BillingWorkflow",
@@ -215,7 +220,7 @@ func TestDrainInput(t *testing.T) {
 		},
 		{
 			name: "empty version",
-			in: drain.VersionDrainIn{
+			in: VersionDrainIn{
 				Queue:        "test-queue",
 				Version:      "",
 				WorkflowType: "BillingWorkflow",
@@ -247,55 +252,173 @@ func TestDrainInput(t *testing.T) {
 	}
 }
 
-func TestSleepPoll(t *testing.T) {
+func TestContinuanceWorkflow(t *testing.T) {
 	t.Parallel()
-	exampleErr := errors.New("example")
 	for _, tt := range []struct {
-		name      string
-		statuses  []enumspb.WorkflowExecutionStatus
-		errors    []error
-		wait      time.Duration
-		execution workflow.Execution
-		want      enumspb.WorkflowExecutionStatus
-		wantErr   bool
+		name         string
+		in           ContinuanceIn
+		continueErr  error
+		statusErr    error
+		statusOut    StatusOut
+		terminateErr error
+		wantErr      bool
+		want         ContinuanceStatus
 	}{
 		{
-			name:   "timed out after 1 poll and wf still running",
-			wait:   drain.ContinueAsNewPollInterval,
-			errors: []error{nil},
-			statuses: []enumspb.WorkflowExecutionStatus{
-				enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
-			},
-			want: enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
+			name:        "continue as new error",
+			continueErr: errors.New("example"),
+			wantErr:     true,
 		},
 		{
-			name:   "error after one poll",
-			wait:   drain.ContinueAsNewPollInterval * 4,
-			errors: []error{nil, exampleErr},
-			statuses: []enumspb.WorkflowExecutionStatus{
-				enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
-				enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
+			name: "get status error",
+			in: ContinuanceIn{
+				WaitTime: ContinueAsNewWaitTime,
 			},
-			wantErr: true,
+			statusErr: errors.New("example"),
+			wantErr:   true,
 		},
 		{
-			name:   "workflow failed after 2 polls",
-			wait:   drain.ContinueAsNewPollInterval * 4,
-			errors: []error{nil, nil, nil},
-			statuses: []enumspb.WorkflowExecutionStatus{
-				enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
-				enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
-				enumspb.WORKFLOW_EXECUTION_STATUS_FAILED,
+			name: "don't terminate on continued",
+			in: ContinuanceIn{
+				WaitTime: ContinueAsNewWaitTime,
+				Execution: workflow.Execution{
+					ID:    "id1",
+					RunID: "run1",
+				},
 			},
-			want: enumspb.WORKFLOW_EXECUTION_STATUS_FAILED,
+			statusOut: StatusOut{
+				Status: enums.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
+			},
+			want: ContinuanceStatus{
+				Status: enums.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW,
+				Execution: workflow.Execution{
+					ID:    "id1",
+					RunID: "run1",
+				},
+			},
+		},
+		{
+			name: "terminate workflow error",
+			in: ContinuanceIn{
+				WaitTime: ContinueAsNewWaitTime,
+			},
+			statusOut: StatusOut{
+				Status: enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+			},
+			terminateErr: errors.New("example"),
+			wantErr:      true,
+		},
+		{
+			name: "",
+			in: ContinuanceIn{
+				WaitTime: ContinueAsNewWaitTime,
+				Execution: workflow.Execution{
+					ID:    "id1",
+					RunID: "run1",
+				},
+			},
+			statusOut: StatusOut{
+				Status: enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+			},
+			want: ContinuanceStatus{
+				Status: enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+				Execution: workflow.Execution{
+					ID:    "id1",
+					RunID: "run1",
+				},
+			},
 		},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var (
-				result    enumspb.WorkflowExecutionStatus
-				d         drain.Client
+				err       error
+				testSuite = &testsuite.WorkflowTestSuite{}
+				env       = testSuite.NewTestWorkflowEnvironment()
+			)
+
+			env.SetWorkflowRunTimeout(1 * time.Hour)
+			var c Client
+			env.OnActivity(c.ContinueAsNew, anything, anything).
+				Return(tt.continueErr)
+			env.OnActivity(c.GetStatus, anything, anything).
+				Return(tt.statusOut, tt.statusErr)
+			env.OnActivity(c.TerminateWorkflow, anything, anything).
+				Return(tt.terminateErr)
+
+			env.ExecuteWorkflow(ContinuanceWorkflow, tt.in)
+			require.True(t, env.IsWorkflowCompleted())
+			err = env.GetWorkflowError()
+
+			if tt.wantErr && err == nil {
+				t.Fatalf("wanted error but none received")
+			}
+
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %s", err)
+			}
+
+			if tt.wantErr && err != nil {
+				return
+			}
+
+			var result ContinuanceStatus
+			require.NoError(t, env.GetWorkflowResult(&result))
+			require.Equal(t, tt.want, result)
+		})
+	}
+}
+
+func TestSleepPoll(t *testing.T) {
+	t.Parallel()
+	exampleErr := errors.New("example")
+	for _, tt := range []struct {
+		name      string
+		statuses  []enums.WorkflowExecutionStatus
+		errors    []error
+		wait      time.Duration
+		execution workflow.Execution
+		want      enums.WorkflowExecutionStatus
+		wantErr   bool
+	}{
+		{
+			name:   "timed out after 1 poll and wf still running",
+			wait:   ContinueAsNewPollInterval,
+			errors: []error{nil},
+			statuses: []enums.WorkflowExecutionStatus{
+				enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+			},
+			want: enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+		},
+		{
+			name:   "error after one poll",
+			wait:   ContinueAsNewPollInterval * 4,
+			errors: []error{nil, exampleErr},
+			statuses: []enums.WorkflowExecutionStatus{
+				enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+				enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+			},
+			wantErr: true,
+		},
+		{
+			name:   "workflow failed after 2 polls",
+			wait:   ContinueAsNewPollInterval * 4,
+			errors: []error{nil, nil, nil},
+			statuses: []enums.WorkflowExecutionStatus{
+				enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+				enums.WORKFLOW_EXECUTION_STATUS_RUNNING,
+				enums.WORKFLOW_EXECUTION_STATUS_FAILED,
+			},
+			want: enums.WORKFLOW_EXECUTION_STATUS_FAILED,
+		},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var (
+				result    enums.WorkflowExecutionStatus
+				d         Client
 				testSuite = &testsuite.WorkflowTestSuite{}
 				env       = testSuite.NewTestWorkflowEnvironment()
 				calls     = 0
@@ -305,24 +428,24 @@ func TestSleepPoll(t *testing.T) {
 			env.OnActivity(d.GetStatus, anything, anything).
 				Return(func(
 					ctx context.Context, execution workflow.Execution,
-				) (drain.StatusOut, error) {
+				) (StatusOut, error) {
 					status := tt.statuses[calls]
 					err := tt.errors[calls]
 					if err != nil {
-						return drain.StatusOut{}, temporal.NewApplicationError("err", "err", err)
+						return StatusOut{}, temporal.NewApplicationError("err", "err", err)
 					}
 					calls++
-					return drain.StatusOut{
+					return StatusOut{
 						Status: status,
 					}, err
 				})
 
 			env.ExecuteWorkflow(
-				func(ctx workflow.Context) (enumspb.WorkflowExecutionStatus, error) {
+				func(ctx workflow.Context) (enums.WorkflowExecutionStatus, error) {
 					ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 						StartToCloseTimeout: time.Second * 30,
 					})
-					return drain.SleepUntilContinued(ctx, tt.execution, tt.wait)
+					return SleepUntilContinued(ctx, tt.execution, tt.wait)
 				},
 			)
 			require.True(t, env.IsWorkflowCompleted())
@@ -381,23 +504,23 @@ func TestClientRegister(t *testing.T) {
 	require.NoError(t, err)
 	for _, tt := range []struct {
 		name    string
-		config  drain.Config
+		config  Config
 		wantErr error
 	}{
 		{
 			name:    "temporal client nil",
-			wantErr: drain.ErrNilClient,
+			wantErr: ErrNilClient,
 		},
 		{
 			name:    "temporal namespace empty",
-			wantErr: drain.ErrEmptyNamespace,
-			config: drain.Config{
+			wantErr: ErrEmptyNamespace,
+			config: Config{
 				Temporal: c,
 			},
 		},
 		{
 			name: "valid config checks activity registration",
-			config: drain.Config{
+			config: Config{
 				Temporal:  c,
 				Namespace: "test",
 			},
@@ -407,11 +530,11 @@ func TestClientRegister(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			worker := &testWorker{}
-			require.Equal(t, tt.wantErr, drain.Register(worker, tt.config))
+			require.Equal(t, tt.wantErr, Register(worker, tt.config))
 			if tt.wantErr != nil {
 				return
 			}
-			methodMap := inspectStructMethods(drain.Client{})
+			methodMap := inspectStructMethods(Client{})
 			registeredMap := worker.registeredActivities
 			require.Equal(
 				t, methodMap, registeredMap,

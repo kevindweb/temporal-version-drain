@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	temporal "go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/workflow"
@@ -21,7 +21,7 @@ const (
 	buildIDFilter   = `
 	 AND (
 		BuildIds IN (%s)
-			OR BuildIds IS NULL
+		 OR BuildIds IS NULL
 	)`
 	versionQuery = `
 		TaskQueue='%s'
@@ -49,6 +49,16 @@ func (c Client) CurrentExecutions(
 	})
 	if err != nil {
 		return CurrentExecutionOut{}, err
+	}
+
+	return getNonEmptyExecutions(list)
+}
+
+func getNonEmptyExecutions(
+	list *workflowservice.ListWorkflowExecutionsResponse,
+) (CurrentExecutionOut, error) {
+	if list == nil || list.Executions == nil {
+		return CurrentExecutionOut{}, ErrNilResponse
 	}
 
 	executions := []workflow.Execution{}
@@ -80,18 +90,28 @@ func (c Client) getWorkflowQuery(
 		return "", err
 	}
 
-	buildIDs := []string{}
+	return workflowQueryFromBuildIDs(resp, version, queue, wfType)
+}
+
+func workflowQueryFromBuildIDs(
+	resp *workflowservice.GetWorkerBuildIdCompatibilityResponse, version, queue, wfType string,
+) (string, error) {
+	if resp == nil {
+		return "", ErrNilResponse
+	}
+
+	oldBuildIDs := []string{}
 	for _, set := range resp.GetMajorVersionSets() {
 		for _, buildID := range set.GetBuildIds() {
 			if buildID != version {
-				buildIDs = append(buildIDs, fmt.Sprintf(versionedFilter, buildID))
+				oldBuildIDs = append(oldBuildIDs, fmt.Sprintf(versionedFilter, buildID))
 			}
 		}
 	}
 
 	query := fmt.Sprintf(versionQuery, queue, wfType)
-	if len(buildIDs) != 0 {
-		query += fmt.Sprintf(buildIDFilter, strings.Join(buildIDs, ", "))
+	if len(oldBuildIDs) != 0 {
+		query += fmt.Sprintf(buildIDFilter, strings.Join(oldBuildIDs, ", "))
 	}
 	return query, nil
 }
@@ -100,40 +120,53 @@ func (c Client) getWorkflowQuery(
 // in preparation for migrating all "legacy" workflow executions
 func (c Client) UpgradeBuildCompatibility(ctx context.Context, in UpgradeIn) error {
 	if err := c.temporal.UpdateWorkerBuildIdCompatibility(
-		ctx, &temporal.UpdateWorkerBuildIdCompatibilityOptions{
-			TaskQueue: in.Queue,
-			Operation: &temporal.BuildIDOpAddNewIDInNewDefaultSet{
-				BuildID: in.Version,
-			},
-		},
+		ctx, newDefaultCompatibilityOption(in),
 	); err == nil || err.Error() != fmt.Sprintf(versionExistsErrFormatter, in.Version) {
 		return err
 	}
 
-	return c.temporal.UpdateWorkerBuildIdCompatibility(
-		ctx, &temporal.UpdateWorkerBuildIdCompatibilityOptions{
-			TaskQueue: in.Queue,
-			Operation: &temporal.BuildIDOpPromoteSet{
-				BuildID: in.Version,
-			},
+	return c.temporal.UpdateWorkerBuildIdCompatibility(ctx, promoteCompatibilityOption(in))
+}
+
+func newDefaultCompatibilityOption(in UpgradeIn) *temporal.UpdateWorkerBuildIdCompatibilityOptions {
+	return &temporal.UpdateWorkerBuildIdCompatibilityOptions{
+		TaskQueue: in.Queue,
+		Operation: &temporal.BuildIDOpAddNewIDInNewDefaultSet{
+			BuildID: in.Version,
 		},
-	)
+	}
+}
+
+func promoteCompatibilityOption(in UpgradeIn) *temporal.UpdateWorkerBuildIdCompatibilityOptions {
+	return &temporal.UpdateWorkerBuildIdCompatibilityOptions{
+		TaskQueue: in.Queue,
+		Operation: &temporal.BuildIDOpPromoteSet{
+			BuildID: in.Version,
+		},
+	}
 }
 
 // GetStatus finds the status code of a workflow
 func (c Client) GetStatus(ctx context.Context, execution workflow.Execution) (StatusOut, error) {
-	resp, err := c.temporal.DescribeWorkflowExecution(ctx, execution.ID, execution.RunID)
+	return handleDescribeExecutionStatus(
+		c.temporal.DescribeWorkflowExecution(ctx, execution.ID, execution.RunID),
+	)
+}
+
+func handleDescribeExecutionStatus(
+	resp *workflowservice.DescribeWorkflowExecutionResponse, err error,
+) (StatusOut, error) {
 	if err != nil {
 		return StatusOut{}, err
 	}
 
 	if resp == nil {
-		return StatusOut{}, ErrNilStatusResponse
+		return StatusOut{}, ErrNilResponse
 	}
 
 	status := resp.WorkflowExecutionInfo.GetStatus()
 	return StatusOut{
-		Name:   enumspb.WorkflowExecutionStatus_name[int32(status)],
+		Name:   enums.WorkflowExecutionStatus_name[int32(status)],
 		Status: status,
 	}, nil
 }
@@ -148,7 +181,12 @@ func (c Client) ContinueAsNew(ctx context.Context, execution workflow.Execution)
 // TerminateWorkflow uses wfID and runID to terminate a running workflow
 // and catches an error if the workflow previously completed
 func (c Client) TerminateWorkflow(ctx context.Context, execution workflow.Execution) error {
-	err := c.temporal.TerminateWorkflow(ctx, execution.ID, execution.RunID, terminateReason)
+	return handleTerminationError(
+		c.temporal.TerminateWorkflow(ctx, execution.ID, execution.RunID, terminateReason),
+	)
+}
+
+func handleTerminationError(err error) error {
 	if err == nil || err.Error() == workflowCompleted {
 		return nil
 	}

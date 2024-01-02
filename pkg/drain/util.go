@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/enums/v1"
 	temporalclient "go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
@@ -13,7 +13,7 @@ import (
 
 const (
 	activityTimeout      = time.Second * 10
-	nilStatusResponseMsg = "nil describe status response"
+	nilStatusResponseMsg = "nil temporal client response"
 )
 
 var (
@@ -27,8 +27,8 @@ var (
 	ErrEmptyNamespace = errors.New("temporal namespace is empty")
 	// ErrNilClient validates the temporal client is not nil before Register
 	ErrNilClient = errors.New("temporal client is uninitialized")
-	// ErrNilStatusResponse catches the unlikely empty res from DescribeWorkflowExecution
-	ErrNilStatusResponse = errors.New(nilStatusResponseMsg)
+	// ErrNilResponse catches the unlikely empty res from DescribeWorkflowExecution
+	ErrNilResponse = errors.New(nilStatusResponseMsg)
 )
 
 // Client holds temporal client for processing versioning activities
@@ -93,7 +93,7 @@ type ContinuanceIn struct {
 // ContinuanceStatus represents a workflow's status after an attempted ContinuanceWorkflow
 type ContinuanceStatus struct {
 	Execution workflow.Execution
-	Status    enumspb.WorkflowExecutionStatus
+	Status    enums.WorkflowExecutionStatus
 }
 
 // CurrentExecutionIn holds input required to run Client.CurrentExecutions
@@ -112,7 +112,7 @@ type CurrentExecutionOut struct {
 // StatusOut holds a workflow status enum and human readable status name
 type StatusOut struct {
 	Name   string
-	Status enumspb.WorkflowExecutionStatus
+	Status enums.WorkflowExecutionStatus
 }
 
 // UpgradeIn holds input required to run Client.UpgradeBuildCompatibility

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/kevindweb/version-drain/pkg/drain"
-	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
@@ -49,7 +49,7 @@ func options() worker.Options {
 func versionBump(version, queue string) {
 	wf := "ExampleContinueWorkflow"
 	workflowOptions := client.StartWorkflowOptions{
-		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 		ID:                    fmt.Sprintf("migrate-%s-%s", wf, version),
 		TaskQueue:             queue,
 	}

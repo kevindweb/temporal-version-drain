@@ -9,12 +9,12 @@ install:
 	npm install -g prettier
 
 .PHONY: lint
-lint: install check
+lint: check
 	files=$(gofmt -l .) && [ -z "$(files)" ]
 	golangci-lint run ./...
 
 .PHONY: check
-check: install
+check:
 	workflowcheck ./...
 	prettier -l .
 

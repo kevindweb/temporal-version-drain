@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -25,7 +25,6 @@ func QueueDrainWorkflow(ctx workflow.Context, in VersionDrainIn) (VersionDrainRe
 	}
 
 	ctx = workflow.WithActivityOptions(ctx, activityOptions())
-
 	if err := upgrade(ctx, in); err != nil {
 		return VersionDrainResults{}, err
 	}
@@ -107,7 +106,7 @@ func ContinuanceWorkflow(ctx workflow.Context, in ContinuanceIn) (ContinuanceSta
 
 	if status, err := SleepUntilContinued(ctx, execution, in.WaitTime); err != nil {
 		return ContinuanceStatus{}, err
-	} else if status != enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING {
+	} else if status != enums.WORKFLOW_EXECUTION_STATUS_RUNNING {
 		return ContinuanceStatus{
 			Execution: execution,
 			Status:    status,
@@ -136,25 +135,25 @@ func ContinuanceWorkflow(ctx workflow.Context, in ContinuanceIn) (ContinuanceSta
 // SleepUntilContinued polls a workflow's status while it is running
 func SleepUntilContinued(
 	ctx workflow.Context, execution workflow.Execution, waitTime time.Duration,
-) (enumspb.WorkflowExecutionStatus, error) {
+) (enums.WorkflowExecutionStatus, error) {
 	var pollTime = time.Second * 0
 	for pollTime < waitTime {
 		var res StatusOut
 		if err := workflow.ExecuteActivity(
 			ctx, (Client).GetStatus, execution,
 		).Get(ctx, &res); err != nil {
-			return enumspb.WORKFLOW_EXECUTION_STATUS_UNSPECIFIED, err
+			return enums.WORKFLOW_EXECUTION_STATUS_UNSPECIFIED, err
 		}
 
-		if res.Status != enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING {
+		if res.Status != enums.WORKFLOW_EXECUTION_STATUS_RUNNING {
 			return res.Status, nil
 		}
 
 		pollTime += ContinueAsNewPollInterval
 		if err := workflow.Sleep(ctx, ContinueAsNewPollInterval); err != nil {
-			return enumspb.WORKFLOW_EXECUTION_STATUS_UNSPECIFIED, err
+			return enums.WORKFLOW_EXECUTION_STATUS_UNSPECIFIED, err
 		}
 	}
 
-	return enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING, nil
+	return enums.WORKFLOW_EXECUTION_STATUS_RUNNING, nil
 }

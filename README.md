@@ -35,3 +35,8 @@ The following are requirements of your system before invoking `QueueDrainWorkflo
 - The drain workflow must be called separately for each WorkflowType you want to version
 
 See the [ExampleContinueWorkflow](./examples/example.go) and [worker](./examples/worker/worker.go) to get started.
+
+## Benefits
+
+- History size is clipped as the mechanism uses ContinueAsNew which helps workflow performance
+- There is only ever at most 2 versions running in production concurrently (during a migration) so cognitive complexity is very low compared to other versioning solutions
